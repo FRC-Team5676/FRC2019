@@ -8,23 +8,21 @@
 package frc.robot;
 
 import com.ctre.phoenix.motorcontrol.can.WPI_VictorSPX;
-
-import javax.lang.model.util.ElementScanner6;
-
 import com.ctre.phoenix.motorcontrol.Faults;
 import com.ctre.phoenix.motorcontrol.InvertType;
 
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.TimedRobot;
-//import edu.wpi.first.wpilibj.Timer;
-import edu.wpi.first.wpilibj.Solenoid;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.DoubleSolenoid.Value;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
+//import edu.wpi.first.wpilibj.livewindow.LiveWindow;
+//import edu.wpi.first.wpilibj.livewindow.LiveWindowSendable;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
-import edu.wpi.first.wpilibj.AnalogInput;
-/*import edu.wpi.first.cameraserver.CameraServer; */
+//import edu.wpi.first.wpilibj.Compressor;
+import edu.wpi.first.cameraserver.CameraServer;
 
 /**
  * The VM is configured to automatically run this class, and to call the
@@ -40,43 +38,38 @@ public class Robot extends TimedRobot {
   private WPI_VictorSPX right_front_drive = new WPI_VictorSPX(5);
   private WPI_VictorSPX intake_conveyor = new WPI_VictorSPX(4);
   private WPI_VictorSPX pivot_motor = new WPI_VictorSPX(9);
-  private final Joystick m_stick_0 = new Joystick(0);
-  private final Joystick m_stick_1 = new Joystick(1);
+  private final Joystick m_stick = new Joystick(0);
+  private final Timer m_timer = new Timer();
 
-  Solenoid Launcher;
-  long button13_time;
-  boolean Launcher_Value;
+  // Spark RightIntake = new Spark(7);
+  // Spark LeftIntake = new Spark(8);
   DoubleSolenoid Beak_Extend;
   DoubleSolenoid Floor_Piston_Lift; // will lift the robot
+  // DoubleSolenoid Intake_Hold;
   DoubleSolenoid Hatch_Clamp;
   DoubleSolenoid Rocket_Ramp_Piston;
-  DoubleSolenoid Front_Floor_Piston_Lift; // will lift wheels first
 
-  long teleop_time;
-
-  DoubleSolenoid.Value Front_Floor_Piston_Lift_Value;
-  long button2_time;
-
-  DoubleSolenoid.Value Hatch_Clamp_Value;
-  long button3_time;
+  //boolean intake_half_speed;
+  //long button2_time;
 
   DoubleSolenoid.Value Beak_Extend_Value;
   long button4_time;
+  long teleop_time;
 
-  DoubleSolenoid.Value Floor_Piston_Lift_Value;
-  long button5_time;
+  DoubleSolenoid.Value Hatch_Clamp_Value;
+  long button3_time;
+  long teleop_time2;
 
   DoubleSolenoid.Value Rocket_Ramp_Piston_Value;
   long button6_time;
+  long teleop_time3;
 
-  long button7_time;
-  long button8_time;
+  DoubleSolenoid.Value Floor_Piston_Lift_Value;
+  long button5_time;
+  long teleop_time4;
+
   DigitalInput limit_switch;
-
-  boolean Use_US_Master = false;
-  double P_Limit;
-  double P_Ratio;
-  AnalogInput US_Input = new AnalogInput(0);
+  DigitalInput reflective_sensor;
 
   DifferentialDrive robot = new DifferentialDrive(left_front_drive, right_front_drive);
   Faults left_faults = new Faults();
@@ -93,14 +86,11 @@ public class Robot extends TimedRobot {
     Rocket_Ramp_Piston = new DoubleSolenoid(2, 4, 5);
     Floor_Piston_Lift = new DoubleSolenoid(3, 0, 1);
     Beak_Extend = new DoubleSolenoid(3, 2, 3);
-    Front_Floor_Piston_Lift = new DoubleSolenoid(2, 0, 1);
-    Launcher = new Solenoid(3, 4);
 
     limit_switch = new DigitalInput(0);
-    /*
-     * CameraServer.getInstance().startAutomaticCapture(0);
-     * CameraServer.getInstance().startAutomaticCapture(1);
-     */
+    reflective_sensor = new DigitalInput(7);
+    CameraServer.getInstance().startAutomaticCapture(0);
+    CameraServer.getInstance().startAutomaticCapture(1);
 
     /* factory default robotInt */
     right_front_drive.configFactoryDefault();
@@ -135,12 +125,6 @@ public class Robot extends TimedRobot {
      * this so we can apply + to both sides when moving forwardard. DO NOT CHANGE
      */
     robot.setRightSideInverted(false);
-
-    Rocket_Ramp_Piston.set(DoubleSolenoid.Value.kReverse);
-    Floor_Piston_Lift.set(DoubleSolenoid.Value.kForward);
-    Front_Floor_Piston_Lift.set(DoubleSolenoid.Value.kReverse);
-    Hatch_Clamp.set(DoubleSolenoid.Value.kForward);
-    Beak_Extend.set(DoubleSolenoid.Value.kReverse);
   }
 
   /**
@@ -164,8 +148,15 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void teleopInit() {
+    Hatch_Clamp.set(DoubleSolenoid.Value.kForward);
+    Beak_Extend.set(DoubleSolenoid.Value.kReverse);
+    // LiveWindow.addActuator("SomeSubsystem","Beak", Beak_Extend);
 
     teleop_time = System.currentTimeMillis();
+    teleop_time2 = System.currentTimeMillis();
+    teleop_time3 = System.currentTimeMillis();
+    teleop_time4 = System.currentTimeMillis();
+
   }
 
   /**
@@ -174,29 +165,27 @@ public class Robot extends TimedRobot {
   @Override
   public void teleopPeriodic() {
 
-    /*
-     * if (System.currentTimeMillis() - teleop_time > 1000 &&
-     * System.currentTimeMillis() - teleop_time < 2000) {
-     * Beak_Extend.set(DoubleSolenoid.Value.kForward); }
-     */
+    if (System.currentTimeMillis() - teleop_time > 1000 && System.currentTimeMillis() - teleop_time < 2000) {
+      Beak_Extend.set(DoubleSolenoid.Value.kForward);
+    }
 
-    SmartDashboard.putBoolean("Rotate Arm Limit Switch", limit_switch.get());
+    // SmartDashboard.putBoolean("Limit Switch", Hatch_Clamp.get());
+    SmartDashboard.putBoolean("Reflective Sensor", reflective_sensor.get());
 
-    if (m_stick_0.getRawButton(1) || m_stick_1.getRawButton(1)) {
+    /*if (m_stick.getRawButton(1)) {
       intake_conveyor.set(-1.0);
-    }
+    } else {
+        intake_conveyor.set(0);
+    }*/
 
-    
-    if (m_stick_0.getRawButton(10) || m_stick_1.getRawButton(10)) {
+    if (m_stick.getRawButton(2)) {
       intake_conveyor.set(-0.5);
+    } else {
+        intake_conveyor.set(0);
     }
 
-    if (!m_stick_0.getRawButton(1) && !m_stick_0.getRawButton(10) && !m_stick_1.getRawButton(1)
-        && !m_stick_1.getRawButton(10)) {
-      intake_conveyor.set(0);
-    }
-    
-    if (m_stick_0.getRawButton(3) || m_stick_1.getRawButton(3)) {
+    if (m_stick.getRawButton(3)) {
+      // Hatch_Clamp.set(DoubleSolenoid.Value.kReverse);
       if (Hatch_Clamp_Value == Value.kForward) {
         Hatch_Clamp.set(DoubleSolenoid.Value.kReverse);
       } else {
@@ -210,18 +199,17 @@ public class Robot extends TimedRobot {
     }
 
     if (Hatch_Clamp_Value == Value.kForward) {
-      /* System.out.println("Hatch Clamp - Clamped"); */
+      System.out.println("Hatch Clamp - Clamped");
       SmartDashboard.putBoolean("Hatch Clamp", true);
     } else {
-      /* System.out.println("Hatch Clamp - NOT Clamped"); */
+      System.out.println("Hatch Clamp - NOT Clamped");
       SmartDashboard.putBoolean("Hatch Clamp", false);
     }
 
-    if (m_stick_0.getRawButton(4) || m_stick_1.getRawButton(4)) {
+    if (m_stick.getRawButton(4)) {
       if (Beak_Extend_Value == Value.kForward) {
         Beak_Extend.set(DoubleSolenoid.Value.kReverse);
       } else {
-        Rocket_Ramp_Piston.set(DoubleSolenoid.Value.kReverse);
         Beak_Extend.set(DoubleSolenoid.Value.kForward);
       }
       button4_time = System.currentTimeMillis();
@@ -230,16 +218,21 @@ public class Robot extends TimedRobot {
         Beak_Extend_Value = Beak_Extend.get();
       }
     }
-
+    
     if (Beak_Extend_Value == Value.kForward) {
       System.out.println("Beak - Extended");
       SmartDashboard.putBoolean("Beak Extend", true);
     } else {
-      /* System.out.println("Beak - NOT Extended"); */
+      System.out.println("Beak - NOT Extended");
       SmartDashboard.putBoolean("Beak Extend", false);
     }
+    /*
+     * if (m_stick.getRawButton(5)) {
+     * Rocket_Ramp_Piston.set(DoubleSolenoid.Value.kReverse); }
+     */
 
-    if (m_stick_0.getRawButton(5) || m_stick_1.getRawButton(5)) {
+    if (m_stick.getRawButton(5)) {
+      // Floor_Piston_Lift.set(DoubleSolenoid.Value.kReverse);
       if (Floor_Piston_Lift_Value == Value.kForward) {
         Floor_Piston_Lift.set(DoubleSolenoid.Value.kReverse);
       } else {
@@ -253,26 +246,11 @@ public class Robot extends TimedRobot {
 
     }
 
-    if (m_stick_0.getRawButton(2) || m_stick_1.getRawButton(2)) {
-      if (Front_Floor_Piston_Lift_Value == Value.kReverse) {
-        Front_Floor_Piston_Lift.set(DoubleSolenoid.Value.kForward);
-      } else {
-        Front_Floor_Piston_Lift.set(DoubleSolenoid.Value.kReverse);
-      }
-      button2_time = System.currentTimeMillis();
-    } else {
-      if (System.currentTimeMillis() - button2_time > 250) {
-        Front_Floor_Piston_Lift_Value = Front_Floor_Piston_Lift.get();
-      }
-
-    }
-
-    if (m_stick_0.getRawButton(6) || m_stick_1.getRawButton(6)) {
+    if (m_stick.getRawButton(6)) {
+      // Rocket_Ramp_Piston.set(DoubleSolenoid.Value.kForward);
       if (Rocket_Ramp_Piston_Value == Value.kForward) {
         Rocket_Ramp_Piston.set(DoubleSolenoid.Value.kReverse);
       } else {
-        Hatch_Clamp.set(DoubleSolenoid.Value.kReverse);
-        Beak_Extend.set(DoubleSolenoid.Value.kReverse);
         Rocket_Ramp_Piston.set(DoubleSolenoid.Value.kForward);
       }
       button6_time = System.currentTimeMillis();
@@ -282,120 +260,61 @@ public class Robot extends TimedRobot {
       }
     }
 
-    /* if (m_stick_0.getRawButton(7) || m_stick_1.getRawButton(7)) {
-      Use_US_Master = true;
-    }
-
-    if (m_stick_0.getRawButton(8) || m_stick_1.getRawButton(8)) {
-      Use_US_Master = false;
-    } */
+    // if (limit_switch.get() || reflective_sensor.get()) {
+    // BackdrivePiston.set(DoubleSolenoid.Value.kReverse);
+    // } else {
+    // BackdrivePiston.set(DoubleSolenoid.Value.kForward);
+    // }
     String work = "";
 
-    /* Set Ultrasonic */
-    double aInput = US_Input.getVoltage();
-    SmartDashboard.putBoolean("Ultrasonic", Use_US_Master);
-    if (Use_US_Master && Beak_Extend_Value == Value.kForward) {
-      System.out.println("Ultrasonic (V): " + aInput);
-      P_Limit = 0.4;
-      if (aInput < P_Limit) {
-        P_Ratio = 0.5;
-      } else {
-        P_Ratio = 1;
-      }
-    } else {
-      P_Ratio = 1;
-    }
-
     /* get gamepad stick values */
-    double forward_0 = -1 * m_stick_0.getRawAxis(1); /* positive is forwardard */
-    double turn_0 = +1 * P_Ratio * m_stick_0.getRawAxis(0); /* positive is right */
-    double forward_0_low = -1 * 0.5 * m_stick_0.getRawAxis(5); /* positive is forwardard */
-    double turn_0_low = +1 * 0.5 * P_Ratio * m_stick_0.getRawAxis(4); /* positive is right */
-
-    double forward_1 = -1 * m_stick_1.getRawAxis(1); /* positive is forwardard */
-    double turn_1 = +1 * P_Ratio * m_stick_1.getRawAxis(0); /* positive is right */
-    double forward_1_low = -1 * 0.5 * m_stick_1.getRawAxis(5); /* positive is forwardard */
-    double turn_1_low = +1 * 0.5 * P_Ratio * m_stick_1.getRawAxis(4); /* positive is right */
-
-    double pivot_down_0 = -0.5 * m_stick_0.getRawAxis(3); /* negative is down */
-    double pivot_up_0 = +0.5 * m_stick_0.getRawAxis(2); /* positive is up */
-
-    double pivot_down_1 = -0.5 * m_stick_1.getRawAxis(3); /* negative is down */
-    double pivot_up_1 = +0.5 * m_stick_1.getRawAxis(2); /* positive is up */
+    double forward = -1 * m_stick.getRawAxis(1); /* positive is forwardard */
+    double turn = +1 * m_stick.getRawAxis(0); /* positive is right */
+    double forward_low = -1 * 0.5 * m_stick.getRawAxis(5); /* positive is forwardard */
+    double turn_low = +1 * 0.5 * m_stick.getRawAxis(4); /* positive is right */
+    
+    double pivot_down = +1 * m_stick.getRawAxis(3); /* positive is down */
+    double pivot_up = -1 * m_stick.getRawAxis(2); /* negative is up */
 
     /* deadband gamepad 10% */
-    if (Math.abs(forward_0) < 0.10) {
-      forward_0 = 0;
+    if (Math.abs(forward) < 0.10) {
+      forward = 0;
     }
-    if (Math.abs(turn_0) < 0.10) {
-      turn_0 = 0;
+    if (Math.abs(turn) < 0.10) {
+      turn = 0;
     }
-    if (Math.abs(forward_0_low) < 0.10) {
-      forward_0_low = 0;
+    if (Math.abs(forward_low) < 0.10) {
+      forward_low = 0;
     }
-    if (Math.abs(turn_0_low) < 0.10) {
-      turn_0_low = 0;
+    if (Math.abs(turn_low) < 0.10) {
+      turn_low = 0;
     }
-    if (Math.abs(pivot_down_0) < 0.10) {
-      pivot_down_0 = 0;
+    if (Math.abs(pivot_down) < 0.10) {
+      pivot_down = 0;
     }
-    if (Math.abs(pivot_up_0) < 0.10) {
-      pivot_up_0 = 0;
-    }
-    if (Math.abs(forward_1) < 0.10) {
-      forward_1 = 0;
-    }
-    if (Math.abs(turn_1) < 0.10) {
-      turn_1 = 0;
-    }
-    if (Math.abs(forward_1_low) < 0.10) {
-      forward_1_low = 0;
-    }
-    if (Math.abs(turn_1_low) < 0.10) {
-      turn_1_low = 0;
-    }
-    if (Math.abs(pivot_down_1) < 0.10) {
-      pivot_down_1 = 0;
-    }
-    if (Math.abs(pivot_up_1) < 0.10) {
-      pivot_up_1 = 0;
+    if (Math.abs(pivot_up) < 0.10) {
+      pivot_up = 0;
     }
 
     /* drive robot */
-    if (forward_0 != 0 || turn_0 != 0) {
-      robot.arcadeDrive(forward_0, turn_0);
+    if (forward != 0 || turn != 0) {
+      robot.arcadeDrive(forward, turn);
     }
-    if (forward_0_low != 0 || turn_0_low != 0) {
-      robot.arcadeDrive(forward_0_low, turn_0_low);
-    }
-    if (forward_1 != 0 || turn_1 != 0) {
-      robot.arcadeDrive(forward_1, turn_1);
-    }
-    if (forward_1_low != 0 || turn_1_low != 0) {
-      robot.arcadeDrive(forward_1_low, turn_1_low);
+    if (forward_low != 0 || turn_low != 0) {
+      robot.arcadeDrive(forward_low, turn_low);
     }
 
     /* pivot intake arm */
-    /*
-     * if (limit_switch.get()) { pivot_down_0 = 0; pivot_down_1 = 0; }
-     */
-    if ((Math.abs(pivot_down_0) > 0 && Math.abs(pivot_up_0) > 0)
-        || (Math.abs(pivot_down_1) > 0 && Math.abs(pivot_up_1) > 0)) {
+    if (Math.abs(pivot_down) > 0 && Math.abs(pivot_up) > 0) {
       pivot_motor.set(0);
     } else {
-      if (Math.abs(pivot_down_0) > 0) {
-        pivot_motor.set(pivot_down_0);
+      if (Math.abs(pivot_down) > 0) {
+        pivot_motor.set(pivot_down);
       }
-      if (Math.abs(pivot_up_0) > 0) {
-        pivot_motor.set(pivot_up_0);
+      if (Math.abs(pivot_up) > 0) {
+        pivot_motor.set(pivot_up);
       }
-      if (Math.abs(pivot_down_1) > 0) {
-        pivot_motor.set(pivot_down_1);
-      }
-      if (Math.abs(pivot_up_1) > 0) {
-        pivot_motor.set(pivot_up_1);
-      }
-      if (pivot_down_0 == 0 && pivot_up_0 == 0 && pivot_down_1 == 0 && pivot_up_1 == 0) {
+      if (pivot_down == 0 && pivot_up == 0) {
         pivot_motor.set(0);
       }
     }
@@ -404,7 +323,7 @@ public class Robot extends TimedRobot {
      * [2] Make sure Gamepad forwardard is positive for FORWARD, and GZ is positive
      * for RIGHT
      */
-    work += " GF:" + forward_0 + " GT:" + turn_0 + " LT:" + pivot_up_0 + " RT:" + pivot_down_0;
+    work += " GF:" + forward + " GT:" + turn + " LT:" + pivot_up + " RT:" + pivot_down;
 
     /* get sensor values */
     // double left_position = left_front_drive.GetSelectedSensorPosition(0);
@@ -427,9 +346,10 @@ public class Robot extends TimedRobot {
       work += " R sensor is out of phase";
     }
 
-    /*
-     * print to console if message if (work != "") { System.out.println(work); }
-     */
+    /* print to console if message */
+    if (work != "") {
+      System.out.println(work);
+    }
 
   }
 
